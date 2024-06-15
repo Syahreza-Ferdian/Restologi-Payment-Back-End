@@ -5,4 +5,5 @@ type TransactionRequest struct {
 	CustomerDetails    CustomerDetail    `json:"customer_details"`
 	ItemDetails        []ItemDetail      `json:"item_details"`
 	TransactionDetails TransactionDetail `json:"transaction_details"`
+	Amount             int64             `json:"amount"`
 }
