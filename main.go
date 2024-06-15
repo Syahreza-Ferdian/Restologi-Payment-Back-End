@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"os"
 
@@ -13,44 +14,59 @@ import (
 func createTransaction(c *gin.Context) {
 	var req model.TransactionRequest
 	if err := c.BindJSON(&req); err != nil {
+		log.Printf("Error binding JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	serverKey := os.Getenv("MIDTRANS_SERVER_KEY")
+	log.Printf("Received request: %+v", req)
+
 	midclient := midtrans.NewClient()
-	midclient.ServerKey = serverKey
+	midclient.ServerKey = os.Getenv("MIDTRANS_SERVER_KEY")
 	midclient.APIEnvType = midtrans.Sandbox
 
 	snapGateway := midtrans.SnapGateway{
 		Client: midclient,
 	}
 
-	orderID := uuid.New().String()
+	custAddress := &midtrans.CustAddress{
+		FName:       req.CustomerDetails.FirstName,
+		LName:       req.CustomerDetails.LastName,
+		Phone:       req.CustomerDetails.Phone,
+		Address:     "Sigura-gura Pride",
+		City:        "Malang",
+		Postcode:    "16000",
+		CountryCode: "IDN",
+	}
+
 	snapReq := &midtrans.SnapReq{
 		TransactionDetails: midtrans.TransactionDetails{
-			OrderID:  orderID,
-			GrossAmt: req.Amount,
+			OrderID:  uuid.New().String(),
+			GrossAmt: int64(req.TransactionDetails.GrossAmount),
 		},
 		CustomerDetail: &midtrans.CustDetail{
-			FName: "",
-			LName: "",
-			Email: "",
-			Phone: "",
+			FName:    req.CustomerDetails.FirstName,
+			LName:    req.CustomerDetails.LastName,
+			Email:    req.CustomerDetails.Email,
+			Phone:    req.CustomerDetails.Email,
+			BillAddr: custAddress,
+			ShipAddr: custAddress,
 		},
 	}
 
-	snapResp, err := snapGateway.GetToken(snapReq)
+	snapTokenResp, err := snapGateway.GetToken(snapReq)
+
 	if err != nil {
+		log.Printf("Error getting token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	resp := model.TransactionResponse{
-		Token:       snapResp.Token,
-		SnapUrl:     snapResp.RedirectURL,
-		OrderID:     orderID,
-		GrossAmount: req.Amount,
+		Token:       snapTokenResp.Token,
+		SnapUrl:     snapTokenResp.RedirectURL,
+		OrderID:     snapReq.TransactionDetails.OrderID,
+		GrossAmount: int64(req.TransactionDetails.GrossAmount),
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -65,6 +81,8 @@ func main() {
 	r.Run(":" + port)
 }
 
+var Handler = setupRouter()
+
 func setupRouter() *gin.Engine {
 	r := gin.Default()
 
@@ -72,6 +90,6 @@ func setupRouter() *gin.Engine {
 		ctx.JSON(http.StatusOK, gin.H{"message": "Hello, World!"})
 	})
 
-	r.POST("/create-transaction", createTransaction)
+	r.POST("/charge", createTransaction)
 	return r
 }
